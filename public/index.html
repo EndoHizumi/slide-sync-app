@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>スライド同期ビューアー</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>スライド同期ビューアー</h1>
+            <div class="controls">
+                <select id="roleSelect">
+                    <option value="guest">ゲスト</option>
+                    <option value="host">ホスト</option>
+                </select>
+                <input type="file" id="pdfFile" accept=".pdf" />
+                <div class="navigation">
+                    <button id="prevPage" disabled>前のページ</button>
+                    <span id="pageInfo">ページ: <span id="currentPage">0</span> / <span id="totalPages">0</span></span>
+                    <button id="nextPage" disabled>次のページ</button>
+                </div>
+            </div>
+        </div>
+        <div class="viewer">
+            <canvas id="pdfViewer"></canvas>
+        </div>
+    </div>
+    <script>
+        // PDF.jsの読み込みエラーを検知
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('エラーが発生しました:', {
+                message: msg,
+                url: url,
+                line: line,
+                column: col,
+                error: error
+            });
+            if (msg.includes('pdf.min.js') || msg.includes('pdf.worker.min.js')) {
+                console.error('PDF.jsの読み込みに失敗しました:', msg);
+                alert('PDF表示に必要なライブラリの読み込みに失敗しました。ページを更新してください。');
+            }
+            return false;
+        };
+    </script>
+    <!-- PDF.jsライブラリの読み込み -->
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
+    <script>
+        // PDF.jsの読み込み状態を確認
+        window.addEventListener('load', function() {
+            console.log('ページの読み込みが完了しました');
+            
+            // PDF.jsメインライブラリの確認
+            if (typeof pdfjsLib === 'undefined') {
+                console.error('PDF.jsメインライブラリが読み込まれていません');
+                alert('PDF表示に必要なライブラリが読み込まれていません。ページを更新してください。');
+                return;
+            }
+            console.log('PDF.jsメインライブラリが正しく読み込まれました');
+            
+            // PDF.jsのバージョンを確認
+            console.log('PDF.jsバージョン:', pdfjsLib.version);
+            
+            // ワーカーファイルの設定を確認
+            if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+                console.error('PDF.jsワーカーファイルが設定されていません');
+                alert('PDF.jsワーカーファイルの設定に失敗しました。ページを更新してください。');
+                return;
+            }
+            console.log('PDF.jsワーカーファイルが設定されています:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+        });
+    </script>
+    <script src="js/app.js"></script>
+</body>
+</html>
