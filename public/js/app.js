@@ -371,6 +371,16 @@ roleSelect.addEventListener('change', (e) => {
     prevButton.disabled = !isHost || !pdfDoc;
     nextButton.disabled = !isHost || !pdfDoc;
     statusDiv.textContent = isHost ? 'ホストモード' : 'ゲストモード';
+    
+    // 全画面モード中の場合、クラスを更新
+    if (isFullscreen) {
+        if (isHost) {
+            pdfViewer.classList.remove('guest');
+        } else {
+            pdfViewer.classList.add('guest');
+        }
+    }
+    
     initWebSocket();
 });
 
@@ -718,6 +728,110 @@ WebSocket.prototype.addEventListener = function(type, listener, options) {
 logDiv.style.display = 'none'; // 初期状態では非表示
 document.querySelector('.controls').appendChild(toggleLogButton);
 document.querySelector('.controls').appendChild(logDiv);
+
+// HTMLの要素を取得
+const fullscreenBtn = document.getElementById('fullscreenBtn');
+const pdfViewer = document.querySelector('.viewer');
+
+// 全画面モードの状態
+let isFullscreen = false;
+
+// 全画面モード用のコントロールエリアを作成
+const fullscreenControls = document.createElement('div');
+fullscreenControls.className = 'fullscreen-controls';
+fullscreenControls.innerHTML = `
+    <button id="prevPageFs" disabled>前のページ</button>
+    <span id="pageInfoFs">ページ: <span id="currentPageFs">0</span> / <span id="totalPagesFs">0</span></span>
+    <button id="nextPageFs" disabled>次のページ</button>
+    <button class="exit-fullscreen">全画面終了</button>
+`;
+document.querySelector('.container').appendChild(fullscreenControls);
+
+// 全画面表示ボタンのイベントリスナー
+fullscreenBtn.addEventListener('click', toggleFullscreen);
+
+// 全画面終了ボタンのイベントリスナー
+fullscreenControls.querySelector('.exit-fullscreen').addEventListener('click', exitFullscreen);
+
+// 全画面モードでのページネーションボタンのイベントリスナー
+const prevPageFs = document.getElementById('prevPageFs');
+const nextPageFs = document.getElementById('nextPageFs');
+const currentPageFs = document.getElementById('currentPageFs');
+const totalPagesFs = document.getElementById('totalPagesFs');
+
+prevPageFs.addEventListener('click', () => {
+    if (pageNum <= 1) return;
+    pageNum--;
+    renderPage(pageNum);
+});
+
+nextPageFs.addEventListener('click', () => {
+    if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
+    pageNum++;
+    renderPage(pageNum);
+});
+
+// 全画面表示を切り替える関数
+function toggleFullscreen() {
+    if (!isFullscreen) {
+        // 全画面モードに入る
+        pdfViewer.classList.add('fullscreen');
+        
+        // ゲストモードの場合はguestクラスを追加
+        if (!isHost) {
+            pdfViewer.classList.add('guest');
+        }
+        
+        isFullscreen = true;
+        
+        // 全画面モード用のページ情報を更新
+        updateFullscreenPageInfo();
+        
+        // ESCキー押下イベントリスナーを追加
+        document.addEventListener('keydown', handleEscKey);
+    } else {
+        exitFullscreen();
+    }
+}
+
+// 全画面表示を終了する関数
+function exitFullscreen() {
+    pdfViewer.classList.remove('fullscreen');
+    pdfViewer.classList.remove('guest');
+    isFullscreen = false;
+    document.removeEventListener('keydown', handleEscKey);
+}
+
+// ESCキーを押したときの処理
+function handleEscKey(event) {
+    if (event.key === 'Escape' && isFullscreen) {
+        exitFullscreen();
+    }
+}
+
+// 全画面モード用のページ情報を更新する関数
+function updateFullscreenPageInfo() {
+    if (!pdfDoc) return;
+    
+    currentPageFs.textContent = pageNum;
+    totalPagesFs.textContent = pdfDoc.numPages;
+    
+    prevPageFs.disabled = pageNum <= 1;
+    nextPageFs.disabled = pageNum >= pdfDoc.numPages;
+}
+
+// 既存のrenderPage関数を修正
+const originalRenderPage = renderPage;
+renderPage = function(num) {
+    const result = originalRenderPage(num);
+    
+    // 全画面モードのページ情報も更新
+    if (isFullscreen) {
+        updateFullscreenPageInfo();
+    }
+    
+    return result;
+};
 
 // 初期化
 initWebSocket();

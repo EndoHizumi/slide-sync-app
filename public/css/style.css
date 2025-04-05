@@ -92,23 +92,99 @@ button:disabled {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
 }
 
+/* 全画面ボタンのスタイル */
+#fullscreenBtn {
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 5px 8px;
+    cursor: pointer;
+    margin-left: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#fullscreenBtn:hover {
+    background-color: #e0e0e0;
+}
+
+#fullscreenBtn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* 全画面モード時のスタイル */
+.viewer.fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+    background-color: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.viewer.fullscreen canvas {
+    max-width: 95%;
+    max-height: 95%;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+/* 全画面モード時のコントロール */
+.fullscreen-controls {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 10px 15px;
+    border-radius: 5px;
+    z-index: 1001;
+    display: none;
+}
+
+.viewer.fullscreen + .fullscreen-controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* ゲストモード時の全画面コントローラー非表示設定 */
+.viewer.fullscreen.guest + .fullscreen-controls {
+    display: none;
+}
+
+.exit-fullscreen {
+    background-color: #ff5f5f;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 5px 10px;px) {
+    cursor: pointer;
+}       padding: 10px;
+    }
 /* モバイル対応 */
 @media (max-width: 768px) {
-    .container {
+    .container { 15px;
         padding: 10px;
     }
-
-    .header {
+    h1 {
+    .header {size: 20px;
         padding: 15px;
     }
-
-    h1 {
-        font-size: 20px;
+    .controls {
+    h1 {flex-direction: column;
+        font-size: 20px;etch;
     }
 
-    .controls {
+    .controls { {
         flex-direction: column;
-        align-items: stretch;
+        align-items: stretch;er;
     }
 
     .navigation {
@@ -116,11 +192,11 @@ button:disabled {
         justify-content: center;
     }
 
-    button {
+    button {o {
         width: 100%;
-        margin: 5px 0;
+        margin: 5px 0;nter;
+    }   margin: 10px 0;
     }
-
     #pageInfo {
         width: 100%;
         text-align: center;
@@ -128,13 +204,13 @@ button:disabled {
     }
 
     .viewer {
-        padding: 10px;
+        padding: 10px;px) and (max-width: 1024px) {
+    }container {
+}       padding: 15px;
     }
-}
-
 /* タブレット対応 */
 @media (min-width: 769px) and (max-width: 1024px) {
-    .container {
+    .container {x;
         padding: 15px;
     }
 
