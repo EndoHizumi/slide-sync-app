@@ -246,8 +246,8 @@ function initWebSocket() {
     }
 
     isReconnecting = true;
-    console.log(`WebSocket接続を試行: ws://${window.location.host}`);
-    ws = new WebSocket(`ws://${window.location.host}`);
+    console.log(`WebSocket接続を試行: wss://${window.location.host}`);
+    ws = new WebSocket(`wss://${window.location.host}`);
     ws.binaryType = 'blob'; // blobとして受信
     console.log('WebSocketオブジェクト作成完了、イベントハンドラを設定します');
 
