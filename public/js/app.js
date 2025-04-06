@@ -15,7 +15,8 @@ if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
 let pdfDoc = null;
 let pageNum = 1;
 let ws = null;
-let isHost = false;
+let isHost = true; // デフォルトはホスト
+let sessionId = null;
 let currentPdfUrl = null;
 let currentPdfData = null; // PDFデータを保存する変数
 
@@ -24,8 +25,8 @@ const canvas = document.getElementById('pdfViewer');
 const ctx = canvas.getContext('2d');
 const roleSelect = document.getElementById('roleSelect');
 const fileInput = document.getElementById('pdfFile');
-const prevButton = document.getElementById('prevPage');
-const nextButton = document.getElementById('nextPage');
+let prevButton = document.getElementById('prevPage');
+let nextButton = document.getElementById('nextPage');
 const currentPageSpan = document.getElementById('currentPage');
 const totalPagesSpan = document.getElementById('totalPages');
 const statusDiv = document.createElement('div');
@@ -37,6 +38,184 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_INTERVAL = 3000;
 let isReconnecting = false;
+
+// URLからセッションIDを取得する関数
+function getSessionIdFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('session');
+}
+
+// 初期化時にURLパラメータを確認
+function initializeRole() {
+    const urlSessionId = getSessionIdFromUrl();
+    
+    if (urlSessionId) {
+        // セッションIDがURLに含まれている場合はゲスト
+        isHost = false;
+        sessionId = urlSessionId;
+        console.log(`ゲストモードで初期化: セッションID=${sessionId}`);
+        
+        // ゲストモード用のUI設定
+        setupGuestMode();
+    } else {
+        // セッションIDがない場合はホスト
+        isHost = true;
+        sessionId = null;
+        console.log('ホストモードで初期化: 新規セッション');
+        
+        // ホストモード用のUI設定
+        setupHostMode();
+    }
+}
+
+// ゲストモード用のUI設定
+function setupGuestMode() {
+    // bodyにゲストモードクラスを追加
+    document.body.classList.add('guest-mode');
+    
+    // 全画面表示を自動的に有効化
+    const viewer = document.getElementById('viewer');
+    if (viewer) {
+        viewer.classList.add('fullscreen');
+    }
+    
+    // ゲスト情報表示を有効化
+    const guestInfo = document.getElementById('guestInfo');
+    if (guestInfo) {
+        guestInfo.style.display = 'flex';
+    }
+    
+    // 接続状態の初期表示
+    updateConnectionStatus('connecting');
+    
+    // ページ情報の初期表示
+    document.getElementById('guestCurrentPage').textContent = '0';
+    document.getElementById('guestTotalPages').textContent = '0';
+    
+    console.log('ゲストモードUIを設定しました');
+}
+
+// ホストモード用のUI設定
+function setupHostMode() {
+    // ゲストモードクラスを削除
+    document.body.classList.remove('guest-mode');
+    
+    // ホストヘッダーを表示
+    const hostHeader = document.getElementById('hostHeader');
+    if (hostHeader) {
+        hostHeader.style.display = 'block';
+    }
+    
+    // 共有URL表示エリアを非表示に
+    const shareUrlArea = document.getElementById('shareUrlArea');
+    if (shareUrlArea) {
+        shareUrlArea.style.display = 'none';
+    }
+    
+    // ロール表示を更新
+    const roleText = document.getElementById('roleText');
+    const roleDisplay = document.getElementById('roleDisplay');
+    if (roleText && roleDisplay) {
+        roleText.textContent = 'ホストモード';
+        roleDisplay.className = 'role-display host';
+    }
+
+    // ナビゲーションボタンを有効化（追加）
+    if (pdfDoc) {
+        prevButton.disabled = pageNum <= 1;
+        nextButton.disabled = pageNum >= pdfDoc.numPages;
+        console.log('ナビゲーションボタンを有効化しました');
+    }
+    
+    console.log('ホストモードUIを設定しました');
+}
+
+// 接続状態の更新
+function updateConnectionStatus(status) {
+    const connectionDot = document.getElementById('connectionDot');
+    if (!connectionDot) return;
+    
+    // 既存のクラスをクリア
+    connectionDot.className = '';
+    
+    switch(status) {
+        case 'connected':
+            connectionDot.classList.add('connected');
+            break;
+        case 'disconnected':
+            connectionDot.classList.add('disconnected');
+            break;
+        case 'connecting':
+            connectionDot.classList.add('connecting');
+            break;
+    }
+}
+
+// ロールに基づいてUI要素を更新
+function updateUIBasedOnRole() {
+    // ロールセレクト（後で削除）を非表示に
+    const roleSelect = document.getElementById('roleSelect');
+    if (roleSelect) roleSelect.style.display = 'none';
+    
+    fileInput.disabled = !isHost;
+    prevButton.disabled = !isHost || !pdfDoc;
+    nextButton.disabled = !isHost || !pdfDoc;
+    
+    // ホストの場合、共有URLを表示するエリアを作成
+    if (isHost) {
+        // 既存のURLエリアがあれば削除
+        const existingUrlArea = document.getElementById('shareUrlArea');
+        if (existingUrlArea) existingUrlArea.remove();
+        
+        // 新しいURLエリアを作成
+        const shareUrlArea = document.createElement('div');
+        shareUrlArea.id = 'shareUrlArea';
+        shareUrlArea.className = 'shareUrlArea';
+        shareUrlArea.innerHTML = `
+            <span>セッション未作成</span>
+            <button id="copyUrlBtn" disabled>URLをコピー</button>
+        `;
+        document.querySelector('.controls').appendChild(shareUrlArea);
+        
+        // コピーボタンのイベント設定
+        document.getElementById('copyUrlBtn').addEventListener('click', copyShareUrl);
+        
+        statusDiv.textContent = 'ホストモード - PDFをアップロードしてセッションを開始してください';
+    } else {
+        statusDiv.textContent = `ゲストモード - セッション ${sessionId} に接続しています`;
+    }
+    
+    // 全画面モード中の場合、クラスを更新
+    if (isFullscreen) {
+        if (isHost) {
+            pdfViewer.classList.remove('guest');
+        } else {
+            pdfViewer.classList.add('guest');
+        }
+    }
+}
+
+// 共有URLをコピーする関数
+function copyShareUrl() {
+    if (!sessionId) return;
+    
+    const shareUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
+    navigator.clipboard.writeText(shareUrl)
+        .then(() => {
+            alert('共有URLをクリップボードにコピーしました');
+        })
+        .catch(err => {
+            console.error('URLのコピーに失敗:', err);
+            // フォールバック: テキストエリアを使用
+            const textArea = document.createElement('textarea');
+            textArea.value = shareUrl;
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            alert('共有URLをクリップボードにコピーしました');
+        });
+}
 
 // WebSocket接続の初期化
 function initWebSocket() {
@@ -51,18 +230,24 @@ function initWebSocket() {
         console.log('WebSocket接続は既に確立されています');
         
         // 既存の接続でも、念のため再登録を行う
-        const registerMsg = JSON.stringify({
+        const registerMsg = {
             type: 'register',
             role: isHost ? 'host' : 'guest'
-        });
+        };
+        
+        // セッションIDがある場合、それも送信
+        if (sessionId) {
+            registerMsg.sessionId = sessionId;
+        }
+        
         console.log('再登録メッセージ送信:', registerMsg);
-        ws.send(registerMsg);
+        sendSecureMessage(registerMsg);
         return;
     }
 
     isReconnecting = true;
-    console.log(`WebSocket接続を試行: wss://${window.location.host}`);
-    ws = new WebSocket(`wss://${window.location.host}`);
+    console.log(`WebSocket接続を試行: ws://${window.location.host}`);
+    ws = new WebSocket(`ws://${window.location.host}`);
     ws.binaryType = 'blob'; // blobとして受信
     console.log('WebSocketオブジェクト作成完了、イベントハンドラを設定します');
 
@@ -72,13 +257,19 @@ function initWebSocket() {
         reconnectAttempts = 0;
         isReconnecting = false;
 
-        // 接続確立後に登録メッセージを送信
-        const registerMsg = JSON.stringify({
+        // 接続確立後に登録メッセージを送信（セッションIDを含む）
+        const registerMsg = {
             type: 'register',
             role: isHost ? 'host' : 'guest'
-        });
+        };
+        
+        // セッションIDがある場合、それも送信
+        if (sessionId) {
+            registerMsg.sessionId = sessionId;
+        }
+        
         console.log('登録メッセージ送信:', registerMsg);
-        ws.send(registerMsg);
+        sendSecureMessage(registerMsg);
         
         // ホストの場合、現在のPDFを再送する
         if (isHost && currentPdfData) {
@@ -196,9 +387,87 @@ function initWebSocket() {
                     return;
                 }
                 
+                // セッション作成応答の処理
+                if (data.type === 'session_created') {
+                    sessionId = data.sessionId;
+                    console.log('新しいセッションID:', sessionId);
+                    
+                    // 共有URL表示を更新
+                    const shareUrlArea = document.getElementById('shareUrlArea');
+                    if (shareUrlArea) {
+                        const shareUrl = `${window.location.origin}${window.location.pathname}?session=${sessionId}`;
+                        shareUrlArea.innerHTML = `
+                            <input type="text" value="${shareUrl}" readonly>
+                            <button id="copyUrlBtn">URLをコピー</button>
+                        `;
+                        // 表示設定を追加
+                        shareUrlArea.style.display = 'block';
+                        document.getElementById('copyUrlBtn').addEventListener('click', copyShareUrl);
+                    }
+                    
+                    // PDFデータを送信
+                    if (currentPdfData && ws.readyState === WebSocket.OPEN) {
+                        console.log('セッション作成後にPDFデータを送信開始 -', currentPdfData.byteLength, 'バイト');
+                        
+                        try {
+                            // 送信用にコピーを作成して送信
+                            const dataToSend = currentPdfData.slice(0);
+                            ws.send(dataToSend);
+                            console.log('PDFデータ送信処理が完了しました');
+                            
+                            // この時点でPDF.jsでもレンダリングを開始（別のコピーを使用）
+                            processPdfLocally(currentPdfData.slice(0));
+                        } catch (error) {
+                            console.error('PDFデータ送信中にエラーが発生しました:', error);
+                            statusDiv.textContent = 'PDFデータの送信に失敗しました';
+                        }
+                    }
+                    
+                    statusDiv.textContent = 'セッション作成完了 - URLを共有してください';
+                    return;
+                }
+                
+                // セッションエラーの処理
+                if (data.type === 'session_error') {
+                    console.error('セッションエラー:', data.message);
+                    statusDiv.textContent = `セッションエラー: ${data.message}`;
+                    alert(`セッションエラー: ${data.message}`);
+                    return;
+                }
+                
                 if (data.type === 'page' && !isHost) {
                     pageNum = data.page;
                     renderPage(pageNum);
+                }
+                
+                // ゲストモードでのページ更新処理
+                if (!isHost && event.data instanceof Object) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        // ページ変更メッセージ
+                        if (data.type === 'page') {
+                            const newPage = data.page;
+                            
+                            // ページ番号を更新
+                            document.getElementById('guestCurrentPage').textContent = newPage;
+                            
+                            // PDFがロードされている場合はページも変更
+                            if (pdfDoc && newPage !== pageNum) {
+                                pageNum = newPage;
+                                renderPage(pageNum);
+                            }
+                        }
+                        
+                        // セッション情報を更新
+                        if (data.type === 'session_joined') {
+                            console.log('セッションに参加しました:', data);
+                            updateConnectionStatus('connected');
+                        }
+                        
+                    } catch (e) {
+                        console.error('JSONパースエラー:', e);
+                    }
                 }
             } catch (parseError) {
                 console.error('JSONパースエラー:', parseError);
@@ -214,6 +483,7 @@ function initWebSocket() {
 
     ws.onclose = () => {
         console.log('WebSocket接続切断');
+        updateConnectionStatus('disconnected');
         
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
@@ -231,6 +501,7 @@ function initWebSocket() {
     ws.onerror = (error) => {
         console.error('WebSocket エラー:', error);
         statusDiv.textContent = '接続エラー';
+        updateConnectionStatus('disconnected');
         if (ws.readyState === WebSocket.OPEN) {
             ws.close();
         }
@@ -246,29 +517,41 @@ async function loadPDF(file) {
         const arrayBuffer = await file.arrayBuffer();
         console.log('PDFファイルをArrayBufferに変換:', arrayBuffer.byteLength, 'bytes');
         
+        // PDFシグネチャのチェック (%PDF-)
+        const firstBytes = new Uint8Array(arrayBuffer.slice(0, 5));
+        const signature = String.fromCharCode.apply(null, firstBytes);
+        if (signature !== '%PDF-') {
+            throw new Error('選択されたファイルはPDFではありません');
+        }
+        
         // PDFデータをグローバル変数に保存（再接続時のために）
-        currentPdfData = arrayBuffer;
+        currentPdfData = arrayBuffer.slice(0);
         
         // ホストの場合、PDFのバイナリデータを直接送信
         if (isHost && ws && ws.readyState === WebSocket.OPEN) {
-            console.log('WebSocketでPDFデータを送信');
-            ws.send(arrayBuffer);
+            console.log('WebSocketでPDFデータを送信準備');
+            
+            // PDFデータ送信前にセッション作成メッセージを送る
+            if (!sessionId) {
+                sendSecureMessage({
+                    type: 'create_session',
+                    fileName: file.name,
+                    fileSize: file.size,
+                });
+                
+                statusDiv.textContent = 'セッション作成中...';
+                return;
+            } else {
+                // 既にセッションIDがある場合は直接送信
+                console.log('既存セッションにPDFを送信:', arrayBuffer.byteLength, 'バイト');
+                ws.send(arrayBuffer);
+                console.log('PDFデータ送信完了');
+            }
         }
 
-        console.log('PDF.jsでドキュメントを読み込み開始');
-        pdfDoc = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-        console.log('PDF読み込み完了。総ページ数:', pdfDoc.numPages);
+        // ローカルでもPDFを処理（セッション作成前でもUIに表示するため）
+        await processPdfLocally(arrayBuffer);
         
-        totalPagesSpan.textContent = pdfDoc.numPages;
-        pageNum = 1;
-        renderPage(1);
-        
-        if (isHost) {
-            prevButton.disabled = false;
-            nextButton.disabled = false;
-        }
-        
-        statusDiv.textContent = 'PDF読み込み完了';
     } catch (error) {
         console.error('PDF読み込みエラー:', error);
         console.error('エラーの詳細:', error.stack);
@@ -277,76 +560,95 @@ async function loadPDF(file) {
     }
 }
 
+// PDF処理を確実に行うための分離関数を追加
+async function processPdfLocally(pdfArrayBuffer) {
+    try {
+        console.log('ローカルPDF処理を開始:', pdfArrayBuffer.byteLength, 'バイト');
+        statusDiv.textContent = 'PDFをレンダリング中...';
+        
+        // PDF.jsでドキュメントを読み込み
+        console.log('PDF.jsでドキュメントを読み込み開始');
+        
+        const loadingTask = pdfjsLib.getDocument({ data: pdfArrayBuffer });
+        loadingTask.onProgress = (progress) => {
+            const percent = Math.round((progress.loaded / progress.total) * 100);
+            console.log(`PDF読み込み進捗: ${percent}%`);
+            statusDiv.textContent = `PDFを読み込み中... ${percent}%`;
+        };
+        
+        pdfDoc = await loadingTask.promise;
+        console.log('PDF読み込み完了。総ページ数:', pdfDoc.numPages);
+        
+        totalPagesSpan.textContent = pdfDoc.numPages;
+        pageNum = 1;
+        
+        // 既存のナビゲーションボタンのイベントリスナーをセットアップ
+        setupNavigationButtons();
+        
+        // PDFの1ページ目をレンダリング
+        console.log('PDFをレンダリング開始: ページ', pageNum);
+        await renderPage(pageNum);
+        console.log('PDFレンダリング完了: ページ', pageNum);
+        
+        statusDiv.textContent = 'PDF表示完了';
+    } catch (error) {
+        console.error('ローカルPDF処理エラー:', error);
+        console.error('エラーの詳細:', error.stack);
+        statusDiv.textContent = `PDF処理エラー: ${error.message}`;
+    }
+}
+
 // ページの描画
 async function renderPage(num) {
-    console.log('ページレンダリング開始:', num);
-    statusDiv.textContent = 'ページを描画中...';
-
-    if (!pdfDoc) {
-        const error = new Error('PDFドキュメントが読み込まれていません');
-        console.error(error);
-        statusDiv.textContent = error.message;
-        return;
-    }
-
-    if (num < 1 || num > pdfDoc.numPages) {
-        const error = new Error(`無効なページ番号です: ${num} (総ページ数: ${pdfDoc.numPages})`);
-        console.error(error);
-        statusDiv.textContent = error.message;
-        return;
-    }
-
     try {
+        console.log('ページレンダリング開始:', num);
+        statusDiv.textContent = 'ページを描画中...';
+
+        if (!pdfDoc) {
+            console.error('PDFドキュメントが読み込まれていません');
+            statusDiv.textContent = 'PDFが読み込まれていません';
+            return;
+        }
+
         console.log('ページオブジェクトを取得中...');
         const page = await pdfDoc.getPage(num);
         console.log('ページオブジェクト取得完了');
 
-        // ビューポートの計算を改善
-        const containerWidth = canvas.parentElement.clientWidth - 40; // パディングを考慮
+        // ビューポートの計算
+        const containerWidth = canvas.parentElement.clientWidth - 40;
         const containerHeight = canvas.parentElement.clientHeight - 40;
         
-        // 初期ビューポートを取得
         const originalViewport = page.getViewport({ scale: 1.0 });
-        
-        // コンテナに合わせてスケールを計算
         const widthScale = containerWidth / originalViewport.width;
         const heightScale = containerHeight / originalViewport.height;
         const scale = Math.min(widthScale, heightScale);
         
-        // 最終的なビューポートを設定
         const viewport = page.getViewport({ scale: scale });
         console.log('ビューポート設定:', viewport.width, 'x', viewport.height);
 
         // キャンバスのサイズを設定
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        console.log('キャンバスサイズ設定:', canvas.width, 'x', canvas.height);
-
+        
         // キャンバスのスタイルを直接設定
         canvas.style.width = `${viewport.width}px`;
         canvas.style.height = `${viewport.height}px`;
-        canvas.style.transform = 'none'; // scaleを使用しない
 
         // ページを描画
         console.log('ページレンダリング開始');
         const renderContext = {
             canvasContext: ctx,
-            viewport: viewport,
-            enableWebGL: true,
-            renderInteractiveForms: true
+            viewport: viewport
         };
         
         const renderTask = page.render(renderContext);
-        renderTask.onContinue = (cont) => {
-            console.log('レンダリング進行中...');
-            cont();
-        };
-        
         await renderTask.promise;
         console.log('ページレンダリング完了');
-        statusDiv.textContent = `ページ ${num} を表示中`;
 
         currentPageSpan.textContent = num;
+        
+        // ページナビゲーションボタンの状態を更新
+        updateNavigationButtons();
 
         // ホストの場合、ページ変更を通知
         if (isHost && ws && ws.readyState === WebSocket.OPEN) {
@@ -356,34 +658,18 @@ async function renderPage(num) {
                 page: num
             }));
         }
+        
+        statusDiv.textContent = `ページ ${num} を表示中`;
+        return true;
     } catch (error) {
         console.error('ページ描画エラー:', error);
         console.error('エラーの詳細:', error.stack);
         statusDiv.textContent = `ページ描画エラー: ${error.message}`;
-        alert('ページの描画に失敗しました: ' + error.message);
+        return false;
     }
 }
 
 // イベントリスナーの設定
-roleSelect.addEventListener('change', (e) => {
-    isHost = e.target.value === 'host';
-    fileInput.disabled = !isHost;
-    prevButton.disabled = !isHost || !pdfDoc;
-    nextButton.disabled = !isHost || !pdfDoc;
-    statusDiv.textContent = isHost ? 'ホストモード' : 'ゲストモード';
-    
-    // 全画面モード中の場合、クラスを更新
-    if (isFullscreen) {
-        if (isHost) {
-            pdfViewer.classList.remove('guest');
-        } else {
-            pdfViewer.classList.add('guest');
-        }
-    }
-    
-    initWebSocket();
-});
-
 fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
         loadPDF(e.target.files[0]);
@@ -584,6 +870,32 @@ debugDiv.appendChild(htmlMsgButton);
 debugDiv.appendChild(reconnectButton);
 debugDiv.appendChild(statusButton);
 debugDiv.appendChild(testButton);
+
+// PDFレンダリングテストボタン
+const testRenderButton = document.createElement('button');
+testRenderButton.textContent = 'PDFレンダリングテスト';
+testRenderButton.onclick = () => {
+    if (!currentPdfData) {
+        alert('PDFデータがロードされていません');
+        return;
+    }
+    
+    console.log('手動PDFレンダリングテスト開始');
+    // スライスでコピーを作成して渡す
+    processPdfLocally(currentPdfData.slice(0))
+        .then(() => console.log('テストレンダリング完了'))
+        .catch(err => console.error('テストレンダリング失敗:', err));
+};
+debugDiv.appendChild(testRenderButton);
+
+// キャンバスサイズ表示ボタン
+const canvasSizeButton = document.createElement('button');
+canvasSizeButton.textContent = 'キャンバスサイズ確認';
+canvasSizeButton.onclick = () => {
+    alert(`キャンバスサイズ: ${canvas.width}x${canvas.height}\nスタイルサイズ: ${canvas.style.width}x${canvas.style.height}\nビューア要素: ${pdfViewer.clientWidth}x${pdfViewer.clientHeight}`);
+};
+debugDiv.appendChild(canvasSizeButton);
+
 document.querySelector('.controls').appendChild(debugDiv);
 
 // 送信関数を改善
@@ -833,5 +1145,104 @@ renderPage = function(num) {
     return result;
 };
 
+// ナビゲーションボタンのイベントリスナーを明示的に設定
+function setupNavigationButtons() {
+    console.log('ナビゲーションボタンの設定を開始');
+    
+    // 既存のイベントリスナーをクリア（重複防止）
+    prevButton.replaceWith(prevButton.cloneNode(true));
+    nextButton.replaceWith(nextButton.cloneNode(true));
+    
+    // 新しい参照を取得
+    const newPrevButton = document.getElementById('prevPage');
+    const newNextButton = document.getElementById('nextPage');
+    
+    // 新しいイベントリスナーを設定
+    newPrevButton.addEventListener('click', () => {
+        console.log('前ページボタンがクリックされました - 現在のページ:', pageNum);
+        if (pageNum <= 1) {
+            console.log('既に最初のページです');
+            return;
+        }
+        pageNum--;
+        console.log('ページを変更します:', pageNum);
+        renderPage(pageNum);
+    });
+
+    newNextButton.addEventListener('click', () => {
+        console.log('次ページボタンがクリックされました - 現在のページ:', pageNum);
+        if (!pdfDoc || pageNum >= pdfDoc.numPages) {
+            console.log('既に最後のページです');
+            return;
+        }
+        pageNum++;
+        console.log('ページを変更します:', pageNum);
+        renderPage(pageNum);
+    });
+    
+    // グローバル変数を更新
+    prevButton = newPrevButton;
+    nextButton = newNextButton;
+    
+    console.log('ナビゲーションボタンのイベントリスナーを再設定しました');
+    
+    // ボタンの状態を更新
+    updateNavigationButtons();
+}
+
+// ボタン状態を更新する関数
+function updateNavigationButtons() {
+    if (!pdfDoc) {
+        prevButton.disabled = true;
+        nextButton.disabled = true;
+        return;
+    }
+    
+    prevButton.disabled = !isHost || pageNum <= 1;
+    nextButton.disabled = !isHost || pageNum >= pdfDoc.numPages;
+    
+    console.log('ボタン状態を更新:', {
+        isHost: isHost,
+        pageNum: pageNum,
+        totalPages: pdfDoc ? pdfDoc.numPages : 0,
+        prevDisabled: prevButton.disabled,
+        nextDisabled: nextButton.disabled
+    });
+}
+
 // 初期化
-initWebSocket();
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('ページ初期化開始');
+    
+    // ナビゲーションボタンのデバッグ情報を出力
+    console.log('ナビゲーションボタン状態:', {
+        prevButton: prevButton ? 'OK' : '未取得',
+        prevDisabled: prevButton ? prevButton.disabled : 'N/A',
+        nextButton: nextButton ? 'OK' : '未取得',
+        nextDisabled: nextButton ? nextButton.disabled : 'N/A'
+    });
+    
+    // イベントリスナーが正しく設定されているか再確認
+    prevButton.addEventListener('click', () => {
+        console.log('前ページボタンがクリックされました');
+        if (pageNum <= 1) return;
+        pageNum--;
+        renderPage(pageNum);
+    });
+
+    nextButton.addEventListener('click', () => {
+        console.log('次ページボタンがクリックされました');
+        if (!pdfDoc || pageNum >= pdfDoc.numPages) return;
+        pageNum++;
+        renderPage(pageNum);
+    });
+    
+    // ロール選択要素を非表示にし、URLパラメータでロールを判定
+    initializeRole();
+    
+    // WebSocket接続を初期化
+    initWebSocket();
+});
+
+// URLハッシュが変更されたときにロールを再初期化
+window.addEventListener('hashchange', initializeRole);
